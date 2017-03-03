@@ -1,0 +1,282 @@
+var http = require('http');
+var tokenObject = JSON.stringify({ 
+"auth": 
+	{ 
+		"tenantName": "admin",
+		"passwordCredentials": 
+		{ 
+			"username": "admin", "password": "password" 
+		}
+	}
+});
+
+var networkObject = JSON.stringify({ 
+	"network": 
+		{ 
+			"name": "sree's network 3"
+		}
+});
+
+
+
+var endPoint = '192.168.56.104';
+
+//******************************************************************************************
+
+
+var tokenHeaders = {
+	'Content-Type' : 'application/json',
+};
+		
+var tokenOptions = {
+    host : endPoint,
+	port : 5000,
+    path : '/v2.0/tokens',
+    method : 'POST',
+    headers : tokenHeaders
+};
+
+
+var tokenReq = http.request(tokenOptions, function(res) {
+
+	var responseString = '';
+	res.setEncoding('utf-8');
+    res.on('data', function(data) {
+		responseString += data;
+	});
+
+	res.on('end', function() {
+		var responseObject = JSON.parse(responseString);
+		var tokenId = responseObject.access.token.id;
+		
+		var networkHeaders = {
+			'Content-Type' : 'application/json',
+			'X-Auth-Project-Id': '179a9e7bad074dcab6b645c7d2088073',
+			'User-Agent': 'python-neutronclient',
+			'X-Auth-Token': tokenId,
+			
+		};
+
+		var networkOptions = {
+			host : endPoint,
+			port : 9696,
+			path : '/v2.0/networks',
+			method : 'POST',
+			headers : networkHeaders
+		};
+		
+		var createNetworkReq = http.request(networkOptions, function(res) {
+	
+			var responseString = '';
+			res.setEncoding('utf-8');
+			res.on('data', function(data) {
+				responseString = data;
+			});
+			
+			res.on('end', function() {
+				var responseObject = JSON.parse(responseString);
+				var networkId = responseObject.network.id;
+				console.log('Network ID: '+networkId);
+
+				var subnetObject = JSON.stringify({
+					"subnet": {
+						"network_id": networkId,
+						"ip_version": 4,
+						"cidr": "192.168.1.0/24"
+						}
+				});
+								
+				var subnetHeaders = {
+					'Content-Type' : 'application/json',
+					'Accept': 'application/json',
+					'X-Auth-Token': tokenId,
+				};
+				
+				var subnetOptions = {
+					host: endPoint,
+					port: 9696,
+					path: '/v2.0/subnets',
+					method: 'POST',
+					headers: subnetHeaders
+				}
+				
+
+				var createSubnet = http.request(subnetOptions, function(res) {
+					var responseString = '';
+					res.setEncoding('utf-8');
+					res.on('data', function(data) {
+						responseString = data;
+					});
+					
+					res.on('end', function() {
+						var responseObject = JSON.parse(responseString);
+						console.log('Subnet ID: '+ responseObject.subnet.id);	
+					});
+				});
+				
+				createSubnet.write(subnetObject);
+				createSubnet.end();
+				createSubnet.on('error', function(e) {
+					console.error(e);
+				});
+				
+				var volumeObject = JSON.stringify({
+					"volume": {
+						"display_name": "my-vol-001",
+						"display_description": "Another volume of mine.",
+						"size": 2,
+						"metadata": {
+							"contents": "junk"
+						},
+						"availability_zone": "nova"
+					}
+				});
+								
+				var volumeHeaders = {
+					'Content-Type' : 'application/json',
+					'X-Auth-Token': tokenId,
+				};
+				
+				var volumeOptions = {
+					host: endPoint,
+					port: 8776,
+					path: '/v1/b89c078ee1e54169acb69cbdccf4b6d0/volumes',
+					method: 'POST',
+					headers: volumeHeaders
+				};
+				
+				var createVolume = http.request(volumeOptions, function(res) {
+					var responseString = '';
+					res.setEncoding('utf-8');
+					res.on('data', function(data) {
+						responseString = data;
+					});
+					
+					res.on('end', function() {
+						var responseObject = JSON.parse(responseString);
+						var volumeId = responseObject.volume.id;
+						console.log('Volume ID: '+volumeId);
+						
+						var instanceObject = JSON.stringify({
+							"server": {
+								"name":"test-vm",
+								"imageRef":"607a418e-1de6-42b2-a874-9021b615bc09",
+								"flavorRef":"1",
+								"max_count":1,
+								"min_count":1,
+								"networks":[{
+										"uuid":networkId
+									}
+								],
+								"block_device_mapping_v2": [{
+												"device_name": "/dev/vdb",
+												"source_type": "volume",
+												"destination_type": "volume",
+												"uuid": volumeId,
+												"boot_index": "0"
+											}],
+								"security_groups":[{
+									"name":"default"
+									}
+								]
+							}
+						});
+										
+						var instanceHeaders = {
+							'Content-Type' : 'application/json',
+							'X-Auth-Token': tokenId,
+						};
+						
+						var instanceOptions = {
+							host: endPoint,
+							port: 8774,
+							path: '/v2/b89c078ee1e54169acb69cbdccf4b6d0/servers',
+							method: 'POST',
+							headers: volumeHeaders
+						};
+						
+						var createInstance = http.request(instanceOptions, function(res) {
+							var responseString = '';
+							res.setEncoding('utf-8');
+							res.on('data', function(data) {
+								responseString = data;
+							});
+							
+							res.on('end', function() {
+								var responseObject = JSON.parse(responseString);
+								var instanceId = responseObject;
+								console.log('Server ID: '+instanceId);
+							});
+						});
+						
+						createInstance.write(instanceObject);
+						createInstance.end();
+						createInstance.on('error', function(e) {
+							error(e);
+						});
+
+					});
+				});
+				
+				createVolume.write(volumeObject);
+				createVolume.end();
+				createVolume.on('error', function(e) {
+					error(e);
+				});
+
+				
+			});
+		});
+				
+		createNetworkReq.write(networkObject);
+		createNetworkReq.end();
+		createNetworkReq.on('error', function(e) {
+			console.error(e);
+		});
+
+    });
+});
+
+tokenReq.write(tokenObject);
+tokenReq.end();
+tokenReq.on('error', function(e) {
+    console.error(e);
+});
+
+
+/*******************************************************************************************
+
+
+var networkHeaders = {
+    'Content-Type' : 'application/json',
+	'X-Auth-Project-Id': '179a9e7bad074dcab6b645c7d2088073',
+	'User-Agent': 'python-neutronclient',
+	'X-Auth-Token': tokenId,
+	
+};
+var networkOptions = {
+    host : endPoint,
+	port : port,
+    path : '/v2.0/networks',
+    method : 'POST',
+    headers : networkHeaders
+};
+var createNetworkReq = http.request(networkOptions, function(res) {
+	res.setEncoding('utf-8');
+	res.on('data', function(data) {
+		responseString = data;
+	});
+	
+	res.on('end', function() {
+		var responseObject = JSON.parse(responseString);
+		console.log(responseObject);
+	});
+});
+
+createNetworkReq.write(jsonObject);
+createNetworkReq.end();
+createNetworkReq.on('error', function(e) {
+    console.error(e);
+});
+
+//*******************************************************************************************/
